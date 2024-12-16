@@ -1,0 +1,3 @@
+# /etc/hostname.em0
+inet autoconf
+up

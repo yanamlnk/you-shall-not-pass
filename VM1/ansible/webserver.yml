@@ -1,0 +1,85 @@
+# /root/ansible/webserver.yml
+---
+- name: Configure FreeBSD Web Server
+  hosts: webservers
+  gather_facts: yes
+
+  tasks:
+    - name: Install required packages
+      pkgng:
+        name:
+          - nginx
+          - mysql80-server
+        state: present
+
+    - name: Enable services in rc.conf
+      lineinfile:
+        path: /etc/rc.conf
+        line: "{{ item }}"
+        create: yes
+      with_items:
+        - 'nginx_enable="YES"'
+        - 'mysql_enable="YES"'
+
+    - name: Start MySQL
+      service:
+        name: mysql-server
+        state: started
+
+    - name: Create temporary directory for zip
+      file:
+        path: /root/app_t-nsa-501
+        state: directory
+        mode: '0755'
+
+    - name: Extract application files
+      unarchive:
+        src: /root/app_t-nsa-501.zip
+        dest: /root/app_t-nsa-501
+        remote_src: yes
+
+    - name: Create MySQL database
+      command: mysql -e "CREATE DATABASE IF NOT EXISTS nsa501;"
+
+    - name: Import MySQL database
+      shell: mysql nsa501 < /root/app_t-nsa-501/nsa501.sql
+
+    - name: Create MySQL user and set privileges
+      command: >
+        mysql -e "CREATE USER IF NOT EXISTS 'backend'@'localhost' IDENTIFIED WITH mysql_native_password BY 'Bit8Q6a6G';
+        GRANT ALL PRIVILEGES ON nsa501.* TO 'backend'@'localhost';
+        FLUSH PRIVILEGES;"
+
+    - name: Create web directory
+      file:
+        path: /usr/local/www/nsa501
+        state: directory
+        mode: '0755'
+        owner: www
+        group: www
+
+    - name: Copy PHP file to web directory
+      copy:
+        src: /root/app_t-nsa-501/data.php
+        dest: /usr/local/www/nsa501/data.php
+        owner: www
+        group: www
+        mode: '0644'
+        remote_src: yes
+
+    - name: Configure nginx
+      template:
+        src: nginx.conf.j2
+        dest: /usr/local/etc/nginx/nginx.conf
+      notify: restart nginx
+
+    - name: Start nginx
+      service:
+        name: nginx
+        state: started
+
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted

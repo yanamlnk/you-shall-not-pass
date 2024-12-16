@@ -1,0 +1,3 @@
+# /etc/hostname.em2 (Logical interface: lan-2)
+inet 192.168.42.65 255.255.255.192
+up

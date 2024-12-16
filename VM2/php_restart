@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# PROVIDE: php_restart
+# REQUIRE: php-fpm
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="php_restart"
+rcvar="php_restart_enable"
+start_cmd="${name}_start"
+stop_cmd=":"
+
+php_restart_start()
+{
+    pkill -f 'php-fpm'
+    sleep 2
+    service php-fpm start
+}
+
+load_rc_config $name
+run_rc_command "$1"

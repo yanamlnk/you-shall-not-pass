@@ -1,0 +1,170 @@
+# /root/ansible/install_php74.yml
+---
+- name: Install PHP 7.4 from source
+  hosts: webservers
+  become: yes
+  vars:
+    php_version: "7.4.33"
+    php_checksum: "924846abf93bc613815c55dd3f5809377813ac62a9ec4eb3778675b82a27b927"
+    work_dir: "/tmp/php-build"
+
+  tasks:
+    - name: Install build dependencies
+      pkgng:
+        name:
+          - gcc
+          - gtar
+          - gmake
+          - autoconf
+          - bison
+          - pkgconf
+          - re2c
+          - libxml2
+          - curl
+          - libzip
+          - oniguruma
+          - sqlite3
+          - pcre
+          - libargon2
+        state: present
+
+    - name: Create work directory
+      file:
+        path: "{{ work_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Download PHP source
+      get_url:
+        url: "https://www.php.net/distributions/php-{{ php_version }}.tar.xz"
+        dest: "{{ work_dir }}/php-{{ php_version }}.tar.xz"
+        checksum: "sha256:{{ php_checksum }}"
+
+    - name: Extract PHP source
+      unarchive:
+        src: "{{ work_dir }}/php-{{ php_version }}.tar.xz"
+        dest: "{{ work_dir }}"
+        remote_src: yes
+        creates: "{{ work_dir }}/php-{{ php_version }}"
+        extra_opts:
+          - "--use-compress-program=xz"
+      environment:
+        TAR: /usr/local/bin/gtar
+
+    - name: Configure PHP
+      command:
+        chdir: "{{ work_dir }}/php-{{ php_version }}"
+        cmd: >
+          ./configure
+          --enable-fpm
+          --with-fpm-user=www
+          --with-fpm-group=www
+          --enable-mysqlnd
+          --with-mysqli=mysqlnd
+          --with-pdo-mysql=mysqlnd
+          --with-zlib
+          --with-curl
+          --with-zip
+          --enable-json
+          --enable-mbstring
+          --prefix=/usr/local/php74
+        creates: "{{ work_dir }}/php-{{ php_version }}/Makefile"
+
+    - name: Compile PHP
+      command:
+        chdir: "{{ work_dir }}/php-{{ php_version }}"
+        cmd: gmake
+        creates: "{{ work_dir }}/php-{{ php_version }}/sapi/cli/php"
+
+    - name: Install PHP
+      command:
+        chdir: "{{ work_dir }}/php-{{ php_version }}"
+        cmd: gmake install
+        creates: "/usr/local/php74/bin/php"
+
+    - name: Create PHP configuration directory
+      file:
+        path: /usr/local/php74/etc
+        state: directory
+        mode: '0755'
+
+    - name: Copy default php.ini
+      command:
+        chdir: "{{ work_dir }}/php-{{ php_version }}"
+        cmd: cp php.ini-production /usr/local/php74/etc/php.ini
+        creates: /usr/local/php74/etc/php.ini
+
+    - name: Create symlinks for PHP binaries
+      file:
+        src: "/usr/local/php74/{{ item }}"
+        dest: "/usr/local/bin/{{ item | basename }}"
+        state: link
+      with_items:
+        - bin/php
+        - sbin/php-fpm
+
+    - name: Configure PHP-FPM
+      template:
+        src: www.conf.j2
+        dest: /usr/local/php74/etc/php-fpm.d/www.conf
+      notify: restart php-fpm
+
+    - name: Ensure /usr/local/etc/rc.d exists
+      file:
+        path: /usr/local/etc/rc.d
+        state: directory
+        mode: '0755'
+
+    - name: Copy php-fpm.conf.default to php-fpm.conf
+      copy:
+        src: /usr/local/php74/etc/php-fpm.conf.default
+        dest: /usr/local/php74/etc/php-fpm.conf
+        remote_src: yes
+        mode: '0644'
+
+    - name: Ensure PHP-FPM startup script is present
+      copy:
+        dest: /usr/local/etc/rc.d/php-fpm
+        content: |
+          #!/bin/sh
+          #
+          # PROVIDE: php-fpm
+          # REQUIRE: DAEMON
+          # KEYWORD: shutdown
+
+          . /etc/rc.subr
+
+          name="php_fpm"
+          rcvar="php_fpm_enable"
+
+          command="/usr/local/php74/sbin/php-fpm"
+          pidfile="/var/run/php-fpm.pid"
+
+          load_rc_config $name
+          : ${php_fpm_enable:="NO"}
+
+          run_rc_command "$1"
+        mode: '0755'
+
+    - name: Enable PHP-FPM in rc.conf
+      lineinfile:
+        path: /etc/rc.conf
+        line: 'php_fpm_enable="YES"'
+        create: yes
+
+    - name: Start PHP-FPM service
+      service:
+        name: php-fpm
+        state: started
+        enabled: yes
+
+    - name: Clean up build directory
+      file:
+        path: "{{ work_dir }}"
+        state: absent
+
+  handlers:
+    - name: restart php-fpm
+      service:
+        name: php-fpm
+        state: restarted

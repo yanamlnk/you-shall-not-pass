@@ -1,0 +1,5 @@
+# /etc/rc.conf.local
+pf=YES
+dhcpd_flags=em1 em2 em3
+unbound_flags=
+pkg_scripts=networkinit

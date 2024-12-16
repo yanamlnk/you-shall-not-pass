@@ -1,0 +1,31 @@
+user www;
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    server {
+        listen       80;
+        server_name  localhost;
+        root         /usr/local/www/nsa501;
+
+        # Direct all requests to data.php
+        location / {
+            try_files $uri /data.php$is_args$args;
+        }
+
+        location ~ \.php$ {
+            fastcgi_pass   unix:/var/run/php-fpm.sock;
+            fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+            include        fastcgi_params;
+        }
+    }
+}
