@@ -188,7 +188,7 @@ Configure files for network interfaces:
 
 There you need to verify (or write if no yet correct) static ip of the interface, netmask, and add keyword `up`, that is used to indicate that the network interface should be enabled (brought "up") during system boot.
 
-📋 You can find correct version of files [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/tree/main/VM1/network).
+📋 You can find correct version of files [here](https://github.com/yanamlnk/you-shall-not-pass/tree/main/VM1/network).
 
 ### DHCP 
 Configure DHCP in the file `/etc/dhcpd.conf`. It is normal that this file does not exist. The DHCP server configuration file needs to be created manually when you set up a DHCP server.
@@ -197,7 +197,7 @@ Configure DHCP in the file `/etc/dhcpd.conf`. It is normal that this file does n
 2. `chmod 644 /etc/dhcpd.conf`
 3. `vi /etc/dhcpd.conf` to edit the file. 
 
-📋 Find the file [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/dhcp/dhcpd.conf).
+📋 Find the file [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/dhcp/dhcpd.conf).
 - to check if file does not have any syntax errors: `dhcpd -n -f -d em1 em2 em3`
 
 ❗️ Important note:
@@ -237,8 +237,10 @@ To immediately enable IP forwarding, you can run this command:
 To check if IP forwarding is enabled: `To immediately enable IP forwarding, you can run this command:
 `sysctl net.inet.ip.forwarding`. If it shows `1` - it is enabled, `0` - not enabled.
 
+📚`net.inet.ip.forwarding` is a system control (sysctl) setting that determines whether the operating system forwards IPv4 packets between network interfaces. If you have multiple network interfaces and want your OpenBSD system to route traffic between them (e.g., in a gateway or router setup), you need to enable net.inet.ip.forwarding.
+
 ### DNS
-1. Add the followoing lines to the file `/var/unbound/etc/unbound.conf`: 
+1. Add the following lines to the file `/var/unbound/etc/unbound.conf`: 
 ```
 server:       
     interface: 192.168.42.1 # em1
@@ -257,7 +259,7 @@ forward-zone:
 	forward-addr: 8.8.4.4
 ```
 
-📋 Full file can be found [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/dns/unbound.conf).
+📋 Full file can be found [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/dns/unbound.conf).
 
 📚 In OpenBSD, **Unbound** is a validating, recursive, and caching DNS resolver. It is included in the base system and serves as a lightweight and secure DNS service. It is primarily used to resolve DNS queries locally and cache responses for faster subsequent lookups.
 
@@ -286,12 +288,34 @@ forward-zone:
 Packet Filter is OpenBSD built-in firewall.
 PF controls the flow of traffic between interfaces and enforces rules about which types of network traffic are allowed to pass through the system.
 
-1. Edit the `/etc/pf.conf` file. You can find full file [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/firewall/pf.conf). 
+1. Edit the `/etc/pf.conf` file. You can find full file [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/firewall/pf.conf). 
 2. Reload PF configuration `pfctl -f /etc/pf.conf`
 3. Enable PF if it's not enabled yet `pfctl -e` and pf service: `rcctl enable pf`
 4. Add the following line to the `/etc/rc.conf.local`: `pf=YES`
 
 To check PF rules: `pfctl -sr`
+
+📚Some details for the file:
+- `pass`/`block`/`match`:
+	- `pass`: allows traffic that matches the rule's criteria to pass through. `pass in` - to the mentioned interface, `pass out` - from the mentioned interface
+	- `block`: blocks traffic that matches the rule's criteria. Works same with `in` and `out` as `pass`
+ 	- `match`: modifies or applies special handling to traffic (e.g., NAT or QoS). It does not block or pass traffic but works alongside other rules
+
+- `keep state`: tracks the state of a connection. Once a connection is established, return traffic matching the same state is automatically allowed without needing additional rules. This is essential for protocols like TCP, which involve multiple packets for a single session
+
+- configuration options (`set` commands):
+	- `set optimization aggressive`: optimizes firewall performance with an "aggressive" profile, which is suitable for high-throughput or low-latency environments. It affects how PF manages states and timeouts.
+	- `set ruleset-optimization basic`: simplifies the ruleset to improve efficiency during processing. This "basic" optimization focuses on straightforward reductions like collapsing redundant rules.
+	- `set skip on lo0`: skips filtering on the loopback interface (`lo0`). This is common since loopback traffic is typically local-only and trusted.
+	- `set block-policy return`: specifies how blocked packets are handled. The `return` policy sends a rejection (e.g., TCP RST for TCP packets or ICMP Unreachable for others) back to the sender. This contrasts with a `drop` policy, which silently discards packets.
+	- `set state-policy if-bound`: limits state tracking to the interface where the connection was established. This is useful in multi-homed environments, ensuring state entries are interface-specific, improving security.
+
+ - `match in all scrub` - normalizes incoming traffic, correcting any anomalies (like overlapping fragments). This makes packets safer and more predictable to process.
+	- `no-df`: removes the "Don't Fragment" flag from packets, ensuring compatibility with MTU-based fragmentation.
+	- `random-id`: replaces predictable packet IDs with random ones to enhance security against spoofing and tracking.
+
+ - Network Address Translation (NAT) (`nat-to ($ext_if)`): translates the source address of outgoing packets to the external interface's IP. This is key for allowing private (internal) networks to access external resources like the internet.
+
 
 ### Optional: Internet Access Issue
 ❗️ Do not do this step until you test internet connection in other VMs. 
@@ -374,13 +398,13 @@ auto ens160
 allow-hotplug ens160
 iface ens160 inet dhcp
 ```
-📋 Full files are [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM3/interfaces) (for employee) and [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM4/interfaces) (for administration).
+📋 Full files are [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM3/interfaces) (for employee) and [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM4/interfaces) (for administration).
 
 3. Add ip of the corresponding subnets to the file `/etc/resolv.conf`:
     - for employee: `nameserver 192.168.42.129`
     - for administration: `nameserver 192.168.42.1`
 
-📋 Full files are [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM3/resolv.conf) (for employee) and [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM4/resolv.conf) (for administration).
+📋 Full files are [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM3/resolv.conf) (for employee) and [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM4/resolv.conf) (for administration).
 
 4. Restart networking: `systemctl restart networking`
 5. To check if DHCP is working correctly, run `dhclient -v ens160`, where ens160 is the name of the network.
@@ -400,7 +424,7 @@ To restart DHCP connection: `dhclient -r ens160`, and to start again: `dhclient 
     - rights: All rights on nsa501 table
     - password: Bit8Q6a6G.
 
-📎 Additional files provided [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM2/app_t-nsa-501.zip).
+📎 Additional files provided [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM2/app_t-nsa-501.zip).
 
 ### Prerequisites
 - [Download](https://download.freebsd.org/releases/arm64/aarch64/ISO-IMAGES/14.2/) FreeBSD 14 `iso` image for `arm64` (file called `FreeBSD-14.2-RELEASE-arm64-aarch64-disc1.iso`).
@@ -448,9 +472,9 @@ Once the machine is started, on the top you have `<...>` button (to the right of
 
 ### DHCP Static IP
 1. from the result of command `ifconfig`, save the value of `ether` of `em0` (in the format `xx:xx:xx:xx:xx:xx`).
-2. Configure `/etc/rc.conf`: add the value of the `ther` to the field `ifconfig_em0`: `ifconfig_em0="DHCP ether 00:0c:29:0c:32:3b" `. 
+2. Configure `/etc/rc.conf`: add the value of the `ther` to the field `ifconfig_em0`: `ifconfig_em0="DHCP ether 00:00:00:00:00:00" `. 
 
-📋 Full file [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM2/rc.conf). 
+📋 Full file [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM2/rc.conf). 
 
 3. Come back to VM1 to the file `/etc/dhcpd.conf`. Uncomment block `host server` and for the value of `hardware ethernet` write down you Mac adress taken from VM2. 
 
@@ -477,8 +501,10 @@ On VM2, install Python:
 1. `pkg update`
 2. `pkg install python311`
 
+📚 Ansible itself is written in Python. To execute its code, Python needs to be available on the control node (the machine where Ansible is installed), as well as on managed nodes (the target machines) to execute tasks. When you run Ansible playbooks, it typically connects to target nodes using SSH and executes Python scripts or modules to perform tasks like managing files, installing packages, or configuring services.
+
 On VM1 (in `~/ansible`):
-1. `touch inventory.ini`. Check the content of the file [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/ansible/inventory.ini). This file is used to connect to VM2 from VM1.
+1. `touch inventory.ini`. Check the content of the file [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/ansible/inventory.ini). This file is used to connect to VM2 from VM1.
 2. Test connectivity: `ansible webservers -i inventory.ini -m ping`. If successful:
 ```
 server | SUCCESS => {
@@ -486,6 +512,12 @@ server | SUCCESS => {
     "ping": "pong"
 }
 ```
+📚 `.ini` file is an inventory file used by Ansible to define the hosts (managed nodes) that it will manage, along with optional variables for configuring how Ansible interacts with each host.
+- `[webservers]`: the name of a host group. A group is a collection of hosts that share a purpose or need similar configurations.
+- `server`is an alias for a host. This alias is used in playbooks to reference the host, rather than using its IP address directly (in my case, it is hostname of VM2)
+- `ansible_host=192.168.42.70` specifies the actual IP address (or hostname) of the target machine.
+- `ansible_user=root` specifies the SSH username Ansible will use to connect to the host.
+- `ansible_python_interpreter=/usr/local/bin/python3.11` specifies the Python interpreter Ansible should use on the target host. If the target host doesn't use the default `python` or `python3` path (e.g., `/usr/bin/python3`), you need to explicitly specify the correct path.
 
 ### Send .zip resource file to VM2
 1. From Terminal on local machine where this file is saved, run command: `scp ~/Downloads/app_t-nsa-501.zip root@192.168.42.70:/root/`
@@ -495,23 +527,23 @@ Since there is no more php74 in FreeBSD14, you have to install and compile it ma
 
 1. Create and edit `vi ~/ansible/install_php74.yml`
 
-📋 Check the content [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/ansible/install_php74.yml).
+📋 Check the content [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/ansible/install_php74.yml).
 
 2. `mkdir ~/ansible/templates` - for additional config files used by Ansible
 3. `vi ~/ansible/templates/www.conf.j2` - for PHP-FPM configurations
 
-📋 Check the content [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/ansible/www.conf.j2).
+📋 Check the content [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/ansible/www.conf.j2).
 
 4. Run playbook on VM1: `ansible-playbook -i inventory.ini install_php74.yml`
 
 ### Webserver installation
 1. Create and edit `vi ~/ansible/webserver.yml`
 
-📋 Check the content [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/ansible/webserver.yml).
+📋 Check the content [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/ansible/webserver.yml).
 
 2. For Additional NGINX configs: create and edit file `vi ~/ansible/templates/nginx.conf.j2`
 
-📋 Check the content [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM1/ansible/nginx.conf.j2).
+📋 Check the content [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM1/ansible/nginx.conf.j2).
 
 3. Run playbook on VM1: `ansible-playbook -i inventory.ini webserver.yml`
 
@@ -528,7 +560,7 @@ service php-fpm start
 Or create a script:
 1. `vi /usr/local/etc/rc.d/php_restart`
 
-📋 Check the content [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM2/php_restart).
+📋 Check the content [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM2/php_restart).
 
 2. Make the script executable: `chmod +x /usr/local/etc/rc.d/php_restart`
 3. Enable the script by adding this line to /etc/rc.conf: `php_restart_enable="YES"`
@@ -543,7 +575,7 @@ If you have an issue with internet connection on VM3 and VM4 described on the se
 1. `touch /etc/pf.conf`
 2. `vi /etc/pf.conf`. 
 
-📋 Check the content [here](https://github.com/EpitechMscProPromo2027/T-NSA-501-NCE_1/blob/main/VM2/pf.conf).
+📋 Check the content [here](https://github.com/yanamlnk/you-shall-not-pass/blob/main/VM2/pf.conf).
 
 3. Load the PF kernel modules: `kldload pf` and `kldload pflog`
 4. To make these modules load automatically at boot, add these lines to `/etc/rc.conf`:
