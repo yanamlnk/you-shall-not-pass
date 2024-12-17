@@ -52,7 +52,7 @@
 - OS: OpenBSD, FreeBSD, Debian Bookworm 
 - Tool: Ansible
 
-# Infrasturcture
+# Infrastructure
 ## Virtual Machines
 The infrastucture consists of 4 virtual machines:
 1. VM1 - Gateway
@@ -84,7 +84,7 @@ The infrastucture consists of 4 virtual machines:
     - broadcast : 192.168.42.191
     - range DHCP : 192.168.42.140 - 192.168.42.180 
 
-## Infrasturcture Schema
+## Infrastructure Schema
 
 ![infrastructure schema](infrastructure.png)
 
@@ -284,7 +284,7 @@ forward-zone:
 4. Restart Unbound: `rcctl restart unbound`
 5. Restart dhcpd: `rcctl restart dhcpd`
 
-### Firewal with Packet Filter
+### Firewall with Packet Filter
 Packet Filter is OpenBSD built-in firewall.
 PF controls the flow of traffic between interfaces and enforces rules about which types of network traffic are allowed to pass through the system.
 
@@ -536,6 +536,43 @@ Since there is no more php74 in FreeBSD14, you have to install and compile it ma
 
 4. Run playbook on VM1: `ansible-playbook -i inventory.ini install_php74.yml`
 
+📚 Explanation for the files:
+- before first task, there is general information for the project, like `name`, `hosts` (described in `inventory.ini` file, `become: yes` - means that ansible can run tasks with elevated privileges (`sudo` or root), and `vars` - variables used throughout the playbook
+
+Tasks are executed step by step on the target hosts.
+- first task is instalation of the required packages using `pkgng` - package manager for FreeBSD. `state: present` - ensures that the package, file, or resource exists
+- next its creating a working directory. `state: directory` ensures that the specified path is a directory. If it doesn't exist, Ansible creates it. `mode` parameter sets the permissions of the file or directory. It follows the standard UNIX/Linux file permission format.
+```
+0 7 5 5
+| | | |
+| | | └── Others (world)
+| | └──── Group
+| └────── Owner
+└──────── Special bits (optional, e.g., 0)
+
+Numeric Values for Permissions:
+4 → Read (r)
+2 → Write (w)
+1 → Execute (x)
+Combine values to get permissions:
+7 = 4 + 2 + 1 → Read, Write, and Execute.
+5 = 4 + 1 → Read and Execute.
+```
+
+- next Ansible downloads PHP source from the url and saves it to `dest`. Tasl `get_url` is like `wget` or `curl` in Linux
+- after that goes unarchiving the file. `remote_src: yes` means that `src` value is located in the target machine (by default `src` is located in the machine where Ansible is running, in our case it is VM1. We need to specify that `src` is in VM2). Also, for `unarchive` task Ansible uses additional option with `extra_opts: "--use-compress-program=xz"`, and we specify tool to use to unarchive: `gtar` - with `environment: TAR: /usr/local/bin/gtar`
+- before compilation and installation, we need to configure php using `./configure` script with several options. `cmd` is used to execute a command-line instruction on the target system. `cmd: >` is a YAML "folded block scalar" style that allows you to write a long command on multiple lines for readability. Basically it allows the configure command to span multiple lines but be treated as a single-line command. `chdir` stands for "change directory." It changes the working directory before running the command. `creates` parameter checks if the specified file already exists. If it does, the task is skipped.
+- next are compilation and instalaltion of the php file using commands `gmake` for compilation, and `gmake install` for installation
+- after that is a sut up of PHP config file. Ansible creates file and copies default `php.ini-production` file (`php.ini-production` is a sample configuration file provided with the PHP source code. )
+- then we start the process of configuring `php-fpm` (it is an alternative PHP implementation for handling FastCGI requests, optimized for high-performance web applications. PHP-FPM acts as a process manager for PHP, running in the background and handling PHP requests efficiently). First Ansible creates symlinks (a shortcut or reference that points to another file or directory). In general it is done for future simplicity. Instead of running `php` and `php-fpm` binaries using full path (e.g., `/usr/local/php74/bin/php`), you can simply use commands `php` or `php-fpm` (by placing them to `/usr/local/bin/` and creating a symlink to original binary)
+- configuration of PHP-FPM is done with template `www.conf.j2` provided in `templates` directory:
+	- sets the user/group as `www`
+   	- uses a socket file for communication (`/var/run/php-fpm.sock`)
+   	- configures process management (`pm`) to dynamic mode with limits for workers.
+- next is a tsak to enable php-fpm (by writing a line `php_fpm_enable="YES"` into the config file `rc.conf` and starting the service `php-fpm`
+- cleanup task is done to delete temporary build directory to clean up disk space
+- handlers are triggered when a task notifiec them (e.g., modifying the `www.conf` file as mentioned in the `notify` option in the task of configuring `php-fpm`)
+
 ### Webserver installation
 1. Create and edit `vi ~/ansible/webserver.yml`
 
@@ -549,6 +586,27 @@ Since there is no more php74 in FreeBSD14, you have to install and compile it ma
 
 4. Test nginx on VM2: `nginx -t`
 
+📚 Explanation of the files:
+- as in the playbook for php configuration, first we declare general information: `name`, `hosts` and `gather_facts: yes` - gathers information (facts) about the remote system.
+
+Tasks:
+- first goes installation of the packages `nginx` and `mysql80-server` with `pkgng`
+- next goes enabling the services by adding approproate line into the file `rc.conf`. `lineinfile` - adds lines to the file. `create: yes`: creates the file if it does not exist.
+- `service` task start the service (in this case we start with `mysql-server`), and ensures that `state` is `started` before going to the next task
+- after that Ansibles takes care of unarchiving tha saving source files provided in the zip.
+- to work with `mysql` database, Ansible uses SQL queries (for some uses `command` task, and for one `shell` - because `command` does not accept `<`:
+	- to create database: `command: mysql -e "CREATE DATABASE IF NOT EXISTS nsa501;"`
+ 	- to import database: `shell: mysql nsa501 < /root/app_t-nsa-501/nsa501.sql`
+  	- create user and set privilages: `command: mysql -e "CREATE USER IF NOT EXISTS 'backend'@'localhost' IDENTIFIED WITH mysql_native_password BY 'Bit8Q6a6G'; GRANT ALL PRIVILEGES ON nsa501.* TO 'backend'@'localhost'; FLUSH PRIVILEGES;"`
+- moving to configuration of thw webserver, similarly, first Ansible creates web directory and gives necessary permissions and ownership. Then it copies extracted file `data.php` and start configuring nginx with `nginx.conf.j2` template:
+	- `listen 80`: Listens for HTTP traffic on port 80.
+	- `root`: Web root directory is /usr/local/www/nsa501.
+	- `location /`: All requests are passed to data.php (e.g., a front-controller PHP script).
+	- `location ~ \.php$`: Handles .php files. `fastcgi_pass`: Forwards PHP requests to PHP-FPM via the Unix socket `/var/run/php-fpm.sock`. `SCRIPT_FILENAME`: Ensures the correct PHP file is processed.
+ 	- worker_connections`: Sets the maximum number of simultaneous connections per worker process.
+- after nginx configuration, Ansible starts webserver
+- handler restarts Nginx when notified, ensuring changes to the configuration take effect.
+  
 ### Additional configs
 **PHP_FPM**
 For some reason, previous process of php-fpm is not alwyas stopped after the reboot or turning off. So to be safe, once the VM2 is running, run:
